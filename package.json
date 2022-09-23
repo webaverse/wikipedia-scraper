@@ -1,0 +1,23 @@
+{
+  "name": "wikipedia-scraper",
+  "version": "1.0.0",
+  "description": "",
+  "main": "upload.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/webaverse/wikipedia-scraper.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/webaverse/wikipedia-scraper/issues"
+  },
+  "homepage": "https://github.com/webaverse/wikipedia-scraper#readme",
+  "dependencies": {
+    "uuid-by-string": "^4.0.0",
+    "weaviate-client": "^2.12.0"
+  }
+}
