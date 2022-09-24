@@ -111,24 +111,37 @@ const client = weaviate.client({
     };
   };
 
-  const numRetries = 10;
+  const numRetries = 20;
   const _uploadDatas = async datas => {
     const batcher = client.batch.objectsBatcher();
     for (const data of datas) {
       batcher.withObject(data);
     }
-    const result = await batcher.do();
-    let ok = true;
-    for (const item of result) {
-      if (item.result.errors) {
-        console.warn(item.result.errors);
-        ok = false;
-      }
+    let result = null, err = null;
+    try {
+      result = await batcher.do();
+    } catch(e) {
+      err = e;
     }
-    return ok;
+    if (err === null) {
+      let ok = true;
+      for (const item of result) {
+        if (item.result.errors) {
+          console.warn(item.result.errors);
+          ok = false;
+        }
+      }
+      return ok;
+    } else {
+      console.warn(err.stack);
+      return false;
+    }
   };
   async function processLineByLine() {
     const fileStream = fs.createReadStream('./articles.json');
+    fileStream.on('error', err => {
+      console.error(err);
+    });
   
     const rl = readline.createInterface({
       input: fileStream,
@@ -140,24 +153,28 @@ const client = weaviate.client({
     const articleSpecs = [];
     let uploadedParagraphs = 0;
     let uploadedArticles = 0;
+    let readLines = 0;
     const _flushArticleSpecs = async () => {
-      console.log('flushing article specs', articleSpecs.length);
+      console.log('flushing article specs', `(${articleSpecs.length} total, ${readLines} lines)`);
       
       const paragraphs = articleSpecs.map(a => a.paragraphs).flat();
-      console.log('flushing paragraphs', paragraphs.length, `(${uploadedParagraphs})`);
-      for (let j = 0; j < numRetries; j++) {
-        const ok = await _uploadDatas(paragraphs);
-        if (ok) {
-          break;
-        }
-        if (j === numRetries - 1) {
-          throw new Error('failed to upload paragraphs');
+      for (let k = 0; k < paragraphs.length; k += 100) {
+        const localParagraphs = paragraphs.slice(k, k + 100);
+        console.log('flushing paragraphs', localParagraphs.length, `(${uploadedParagraphs} total, ${readLines} lines)`);
+        for (let j = 0; j < numRetries; j++) {
+          const ok = await _uploadDatas(localParagraphs);
+          if (ok) {
+            uploadedParagraphs += localParagraphs.length;
+            break;
+          }
+          if (j === numRetries - 1) {
+            throw new Error('failed to upload paragraphs');
+          }
         }
       }
-      uploadedParagraphs += paragraphs.length;
 
       const articles = articleSpecs.map(a => a.article).flat();
-      console.log('flushing articles', articles.length, `(${uploadedArticles})`);
+      console.log('flushing articles', articles.length, `(${uploadedArticles} total, ${readLines} lines)`);
       for (let j = 0; j < numRetries; j++) {
         const ok = await _uploadDatas(articles);
         if (ok) {
@@ -172,6 +189,7 @@ const client = weaviate.client({
       articleSpecs.length = 0;
     };
     for await (const line of rl) {
+      readLines++;
       // Each line in input.txt will be successively available here as `line`.
       // console.log(`Line from file: ${line}`);
       let j = JSON.parse(line);
@@ -181,11 +199,13 @@ const client = weaviate.client({
         await _flushArticleSpecs();
       }
     }
+    console.log('done reading lines');
     if (articleSpecs.length > 0) {
       await _flushArticleSpecs();
     }
+    console.log('done final flush');
   }
   await processLineByLine();
 })().catch(err => {
-  console.error(err)
+  console.warn(err)
 })
